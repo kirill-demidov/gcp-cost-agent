@@ -85,7 +85,17 @@ Edit `tools.yaml` and replace:
 
 Table format: `project-id.dataset.gcp_billing_export_v1_XXXXX`
 
-### 4. Local Run
+### 4. Install MCP Toolbox
+
+Download the MCP Toolbox binary:
+
+```bash
+# Download toolbox (replace with latest version)
+curl -L https://github.com/modelcontextprotocol/toolbox/releases/latest/download/toolbox-darwin-arm64 -o toolbox
+chmod +x toolbox
+```
+
+### 5. Local Run
 
 ```bash
 # Start MCP Toolbox

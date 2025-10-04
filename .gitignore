@@ -146,3 +146,6 @@ gcloud/
 # Temporary files
 tmp/
 temp/
+
+# Binary executables
+toolbox
