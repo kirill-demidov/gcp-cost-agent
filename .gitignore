@@ -149,3 +149,7 @@ temp/
 
 # Binary executables
 toolbox
+
+# Generated PlantUML images
+docs/*.png
+docs/*.svg

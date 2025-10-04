@@ -3,23 +3,23 @@
 title GCP Cost Agent - System Architecture
 
 actor User
-participant "Frontend\n(React)" as Frontend
-participant "FastAPI\nBackend" as Backend
-participant "MCP Toolbox\n(ADK)" as Toolbox
-participant "BigQuery\n(Billing Data)" as BigQuery
-participant "Google Cloud\n(Cloud Run)" as CloudRun
+participant "Frontend (React)" as Frontend
+participant "FastAPI Backend" as Backend
+participant "MCP Toolbox (ADK)" as Toolbox
+participant "BigQuery (Billing Data)" as BigQuery
+participant "Google Cloud (Cloud Run)" as CloudRun
 
 == Local Development Flow ==
 
-User -> Frontend: Ask cost question\n"Show costs for September 2025"
-Frontend -> Backend: POST /chat\n{"question": "...", "session_id": "..."}
-Backend -> Backend: Parse intent with LLM\n(costs, trends, comparison, etc.)
-Backend -> Toolbox: Call MCP tool\n(get_monthly_cost_summary)
-Toolbox -> BigQuery: Execute SQL query\nSELECT * FROM billing_table
+User -> Frontend: Ask cost question
+Frontend -> Backend: POST /chat with question and session_id
+Backend -> Backend: Parse intent with LLM (costs, trends, comparison)
+Backend -> Toolbox: Call MCP tool (get_monthly_cost_summary)
+Toolbox -> BigQuery: Execute SQL query
 BigQuery -> Toolbox: Return billing data
 Toolbox -> Backend: Structured response
-Backend -> Backend: Process & format data\nGenerate insights
-Backend -> Frontend: JSON response\n{"answer": "...", "data": {...}}
+Backend -> Backend: Process and format data, Generate insights
+Backend -> Frontend: JSON response with answer and data
 Frontend -> User: Display formatted results
 
 == Cloud Run Deployment Flow ==
@@ -36,23 +36,23 @@ CloudRun -> User: HTTP response
 
 == Advanced Analytics Flow ==
 
-User -> Frontend: Complex query\n"Find anomalies in costs"
+User -> Frontend: Complex query about anomalies
 Frontend -> Backend: POST /chat
-Backend -> Backend: LLM intent analysis\n(anomaly detection)
-Backend -> Toolbox: Multiple tool calls\n(get_cost_trends, get_anomalies)
+Backend -> Backend: LLM intent analysis (anomaly detection)
+Backend -> Toolbox: Multiple tool calls (get_cost_trends, get_anomalies)
 Toolbox -> BigQuery: Complex SQL queries
 BigQuery -> Toolbox: Historical data
 Toolbox -> Backend: Analytics results
-Backend -> Backend: Generate insights\nwith LLM assistance
+Backend -> Backend: Generate insights with LLM assistance
 Backend -> Frontend: Detailed analysis
 Frontend -> User: Visualized results
 
 == Error Handling Flow ==
 
-User -> Frontend: Invalid query\n"How to cook pasta?"
+User -> Frontend: Invalid query
 Frontend -> Backend: POST /chat
-Backend -> Backend: Intent recognition\n(unknown intent)
-Backend -> Frontend: Error message\n"Query not recognized..."
+Backend -> Backend: Intent recognition (unknown intent)
+Backend -> Frontend: Error message
 Frontend -> User: Helpful error message
 
 @enduml

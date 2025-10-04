@@ -11,35 +11,35 @@ participant "BigQuery" as BQ
 
 == Build and Deploy Process ==
 
-Developer -> Local: Set environment variables\nGOOGLE_API_KEY, GCP_PROJECT_ID
+Developer -> Local: Set environment variables
 Developer -> Local: Run deploy.sh
 
 Local -> Local: Validate environment
 Local -> Local: Build Docker image locally
 
-Local -> Build: Submit build\nwith source code
-Build -> Build: Install dependencies\n(pip install -r requirements.txt)
+Local -> Build: Submit build with source code
+Build -> Build: Install dependencies
 Build -> Build: Copy application files
 Build -> Build: Configure environment variables
 Build -> Build: Create Docker image
 
-Build -> Registry: Push image\ngcr.io/project/gcp-cost-agent
+Build -> Registry: Push image to Container Registry
 
 Registry -> Run: Deploy to Cloud Run
-Run -> Run: Configure service\n- Memory: 1Gi\n- CPU: 1\n- Timeout: 300s\n- Min instances: 0\n- Max instances: 10
+Run -> Run: Configure service with memory, CPU, timeout, scaling
 
-Run -> Run: Set environment variables\n- GCP_PROJECT_ID\n- BILLING_TABLE\n- GOOGLE_API_KEY\n- TOOLBOX_URL
+Run -> Run: Set environment variables for GCP access
 
-Run -> BQ: Health check\n(verify BigQuery access)
+Run -> BQ: Health check to verify BigQuery access
 BQ -> Run: Connection confirmed
 
-Run -> Developer: Service deployed\nhttps://service-url.run.app
+Run -> Developer: Service deployed with URL
 
 == Runtime Flow ==
 
 note over Run: Container running on Cloud Run
 Developer -> Run: HTTP request to /health
-Run -> Developer: {"status": "healthy"}
+Run -> Developer: Health status response
 
 Developer -> Run: POST /chat with cost question
 Run -> Run: Process request in container
@@ -55,6 +55,6 @@ Run -> Run: Scale up instances
 Run -> Developer: Handle increased load
 
 note over Run: Scale down when idle
-Run -> Run: Reduce to min instances (0)
+Run -> Run: Reduce to min instances
 
 @enduml
