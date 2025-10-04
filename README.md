@@ -351,7 +351,3 @@ PORT=8080
 
 MIT
 
-## Author
-
-Based on the article by Aryan Irani  
-Adapted for Cloud Run deployment with Russian language support and advanced analytics
