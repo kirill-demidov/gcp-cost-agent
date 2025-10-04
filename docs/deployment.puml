@@ -1,4 +1,4 @@
-@startuml Cloud Run Deployment Flow
+@startuml
 !theme plain
 title GCP Cost Agent - Deployment Process
 
@@ -26,9 +26,8 @@ Build -> Build: Create Docker image
 Build -> Registry: Push image to Container Registry
 
 Registry -> Run: Deploy to Cloud Run
-Run -> Run: Configure service with memory, CPU, timeout, scaling
-
-Run -> Run: Set environment variables for GCP access
+Run -> Run: Configure service
+Run -> Run: Set environment variables
 
 Run -> BQ: Health check to verify BigQuery access
 BQ -> Run: Connection confirmed

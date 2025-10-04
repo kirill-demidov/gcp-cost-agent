@@ -1,4 +1,4 @@
-@startuml GCP Cost Agent Architecture
+@startuml
 !theme plain
 title GCP Cost Agent - System Architecture
 
@@ -12,14 +12,14 @@ participant "Google Cloud (Cloud Run)" as CloudRun
 == Local Development Flow ==
 
 User -> Frontend: Ask cost question
-Frontend -> Backend: POST /chat with question and session_id
-Backend -> Backend: Parse intent with LLM (costs, trends, comparison)
-Backend -> Toolbox: Call MCP tool (get_monthly_cost_summary)
+Frontend -> Backend: POST /chat
+Backend -> Backend: Parse intent with LLM
+Backend -> Toolbox: Call MCP tool
 Toolbox -> BigQuery: Execute SQL query
 BigQuery -> Toolbox: Return billing data
 Toolbox -> Backend: Structured response
-Backend -> Backend: Process and format data, Generate insights
-Backend -> Frontend: JSON response with answer and data
+Backend -> Backend: Process and format data
+Backend -> Frontend: JSON response
 Frontend -> User: Display formatted results
 
 == Cloud Run Deployment Flow ==
@@ -38,12 +38,12 @@ CloudRun -> User: HTTP response
 
 User -> Frontend: Complex query about anomalies
 Frontend -> Backend: POST /chat
-Backend -> Backend: LLM intent analysis (anomaly detection)
-Backend -> Toolbox: Multiple tool calls (get_cost_trends, get_anomalies)
+Backend -> Backend: LLM intent analysis
+Backend -> Toolbox: Multiple tool calls
 Toolbox -> BigQuery: Complex SQL queries
 BigQuery -> Toolbox: Historical data
 Toolbox -> Backend: Analytics results
-Backend -> Backend: Generate insights with LLM assistance
+Backend -> Backend: Generate insights with LLM
 Backend -> Frontend: Detailed analysis
 Frontend -> User: Visualized results
 
@@ -51,7 +51,7 @@ Frontend -> User: Visualized results
 
 User -> Frontend: Invalid query
 Frontend -> Backend: POST /chat
-Backend -> Backend: Intent recognition (unknown intent)
+Backend -> Backend: Intent recognition
 Backend -> Frontend: Error message
 Frontend -> User: Helpful error message
 

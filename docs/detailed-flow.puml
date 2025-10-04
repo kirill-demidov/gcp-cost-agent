@@ -1,4 +1,4 @@
-@startuml Detailed Flow - Cost Analysis
+@startuml
 !theme plain
 title GCP Cost Agent - Detailed Cost Analysis Flow
 
@@ -12,8 +12,8 @@ database "Billing Export Table" as BillingTable
 
 == Cost Analysis Request ==
 
-User -> Browser: Ask: "Show costs by service for August 2025"
-Browser -> API: POST /chat with question and session_id
+User -> Browser: Ask cost question
+Browser -> API: POST /chat
 
 API -> API: Validate request
 API -> API: Check GCP keywords
@@ -23,7 +23,7 @@ LLM -> API: Structured response with intent
 API -> API: Log conversation history
 
 alt Intent: costs
-  API -> Toolbox: Call get_service_comparison with month and top_n
+  API -> Toolbox: Call get_service_comparison
   
   Toolbox -> Toolbox: Generate SQL query
   Toolbox -> BQ: Execute query for service costs
@@ -38,7 +38,7 @@ alt Intent: costs
   API -> Browser: Response with answer and data
   
 else Intent: trends
-  API -> Toolbox: Call get_cost_trends with date range
+  API -> Toolbox: Call get_cost_trends
   
   Toolbox -> BQ: Execute trend analysis query
   BQ -> Toolbox: Monthly cost data
