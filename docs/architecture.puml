@@ -1,0 +1,58 @@
+@startuml GCP Cost Agent Architecture
+!theme plain
+title GCP Cost Agent - System Architecture
+
+actor User
+participant "Frontend\n(React)" as Frontend
+participant "FastAPI\nBackend" as Backend
+participant "MCP Toolbox\n(ADK)" as Toolbox
+participant "BigQuery\n(Billing Data)" as BigQuery
+participant "Google Cloud\n(Cloud Run)" as CloudRun
+
+== Local Development Flow ==
+
+User -> Frontend: Ask cost question\n"Show costs for September 2025"
+Frontend -> Backend: POST /chat\n{"question": "...", "session_id": "..."}
+Backend -> Backend: Parse intent with LLM\n(costs, trends, comparison, etc.)
+Backend -> Toolbox: Call MCP tool\n(get_monthly_cost_summary)
+Toolbox -> BigQuery: Execute SQL query\nSELECT * FROM billing_table
+BigQuery -> Toolbox: Return billing data
+Toolbox -> Backend: Structured response
+Backend -> Backend: Process & format data\nGenerate insights
+Backend -> Frontend: JSON response\n{"answer": "...", "data": {...}}
+Frontend -> User: Display formatted results
+
+== Cloud Run Deployment Flow ==
+
+note over CloudRun: Containerized deployment
+User -> CloudRun: HTTP request
+CloudRun -> Backend: Route to FastAPI
+Backend -> Toolbox: Call MCP tools
+Toolbox -> BigQuery: Query billing data
+BigQuery -> Toolbox: Return results
+Toolbox -> Backend: Processed data
+Backend -> CloudRun: Response
+CloudRun -> User: HTTP response
+
+== Advanced Analytics Flow ==
+
+User -> Frontend: Complex query\n"Find anomalies in costs"
+Frontend -> Backend: POST /chat
+Backend -> Backend: LLM intent analysis\n(anomaly detection)
+Backend -> Toolbox: Multiple tool calls\n(get_cost_trends, get_anomalies)
+Toolbox -> BigQuery: Complex SQL queries
+BigQuery -> Toolbox: Historical data
+Toolbox -> Backend: Analytics results
+Backend -> Backend: Generate insights\nwith LLM assistance
+Backend -> Frontend: Detailed analysis
+Frontend -> User: Visualized results
+
+== Error Handling Flow ==
+
+User -> Frontend: Invalid query\n"How to cook pasta?"
+Frontend -> Backend: POST /chat
+Backend -> Backend: Intent recognition\n(unknown intent)
+Backend -> Frontend: Error message\n"Query not recognized..."
+Frontend -> User: Helpful error message
+
+@enduml

@@ -1,0 +1,90 @@
+@startuml Detailed Flow - Cost Analysis
+!theme plain
+title GCP Cost Agent - Detailed Cost Analysis Flow
+
+actor User
+participant "Web Browser" as Browser
+participant "FastAPI\nBackend" as API
+participant "LLM\n(Gemini)" as LLM
+participant "MCP Toolbox" as Toolbox
+participant "BigQuery" as BQ
+database "Billing Export\nTable" as BillingTable
+
+== Cost Analysis Request ==
+
+User -> Browser: Ask: "Show costs by service for August 2025"
+Browser -> API: POST /chat\n{\n  "question": "Show costs by service for August 2025",\n  "session_id": "session_123"\n}
+
+API -> API: Validate request
+API -> API: Check GCP keywords
+API -> LLM: Parse intent with context\n{\n  "intent": "costs",\n  "month": "202508",\n  "analysis_type": "service_breakdown"\n}
+
+LLM -> API: Structured response
+API -> API: Log conversation history
+
+alt Intent: costs
+  API -> Toolbox: Call get_service_comparison\n{\n  "month": "202508",\n  "top_n": 10\n}
+  
+  Toolbox -> Toolbox: Generate SQL query
+  Toolbox -> BQ: Execute query\nSELECT service_description, \n       SUM(cost) as total_cost\nFROM billing_table\nWHERE invoice_month = '202508'\nGROUP BY service_description\nORDER BY total_cost DESC\nLIMIT 10
+  
+  BQ -> BillingTable: Read billing data
+  BillingTable -> BQ: Return records
+  BQ -> Toolbox: Query results
+  
+  Toolbox -> API: Formatted response\n{\n  "services": [\n    {"name": "BigQuery", "cost": 568.17},\n    {"name": "Cloud Storage", "cost": 259.37}\n  ],\n  "total": 1185.40\n}
+  
+  API -> API: Process and format data
+  API -> Browser: Response\n{\n  "answer": "Топ-10 сервисов за август 2025:\\n1. BigQuery: 568.17 ILS\\n2. Cloud Storage: 259.37 ILS\\n...",\n  "data": {...}\n}
+  
+else Intent: trends
+  API -> Toolbox: Call get_cost_trends\n{\n  "start_month": "202501",\n  "end_month": "202512"\n}
+  
+  Toolbox -> BQ: Execute trend analysis query
+  BQ -> Toolbox: Monthly cost data
+  Toolbox -> API: Trend analysis results
+  API -> API: Generate insights
+  API -> Browser: Trend visualization data
+  
+else Intent: comparison
+  API -> API: Extract comparison parameters
+  API -> Toolbox: Call comparison tools
+  Toolbox -> BQ: Execute comparison queries
+  BQ -> Toolbox: Comparative data
+  Toolbox -> API: Comparison results
+  API -> Browser: Comparison analysis
+  
+else Intent: optimization
+  API -> Toolbox: Call optimization tools
+  Toolbox -> BQ: Analyze unused resources
+  BQ -> Toolbox: Resource utilization data
+  Toolbox -> API: Optimization recommendations
+  API -> Browser: Cost optimization suggestions
+  
+else Intent: unknown
+  API -> Browser: Error message\n"Запрос не распознан. Попробуйте переформулировать..."
+end
+
+Browser -> User: Display results
+
+== Session Management ==
+
+note over API: Maintain conversation context
+API -> API: Store in session history\n{\n  "session_id": "session_123",\n  "history": [\n    {"question": "...", "answer": "...", "parsed": {...}}\n  ]\n}
+
+== Error Handling ==
+
+alt Toolbox Connection Error
+  Toolbox -> API: Connection failed
+  API -> Browser: "Toolbox connection error"
+  Browser -> User: Error notification
+end
+
+alt BigQuery Error
+  BQ -> Toolbox: Query failed
+  Toolbox -> API: "No data available"
+  API -> Browser: "No billing data found"
+  Browser -> User: Informative error
+end
+
+@enduml

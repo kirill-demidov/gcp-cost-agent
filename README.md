@@ -45,6 +45,19 @@ Agent for analyzing Google Cloud Platform costs with Russian and English languag
                        └─────────────────┘    └─────────────────┘
 ```
 
+### Architecture Diagrams
+
+The project includes PlantUML sequence diagrams in the `docs/` folder:
+
+- `docs/architecture.puml` - Overall system architecture and flows
+- `docs/detailed-flow.puml` - Detailed cost analysis request flow
+- `docs/deployment.puml` - Cloud Run deployment process
+
+To view the diagrams:
+1. Install PlantUML: `brew install plantuml` (Mac) or download from [plantuml.com](https://plantuml.com/)
+2. Generate images: `plantuml docs/*.puml`
+3. Or use online viewer: [PlantUML Online Server](http://www.plantuml.com/plantuml/uml/)
+
 ## Quick Start
 
 ### 1. Prerequisites
@@ -253,22 +266,26 @@ curl -X POST https://your-service-url/chat \
 
 ```
 gcp-cost-agent/
+├── docs/                   # Documentation and diagrams
+│   ├── architecture.puml   # System architecture diagram
+│   ├── detailed-flow.puml  # Detailed request flow
+│   └── deployment.puml     # Deployment process
 ├── api/
-│   ├── main.py              # FastAPI backend (local)
-│   └── cloud_api.py         # FastAPI backend (Cloud Run)
+│   ├── main.py             # FastAPI backend (local)
+│   └── cloud_api.py        # FastAPI backend (Cloud Run)
 ├── agents/
 │   └── gcp_cost_agent/
-│       └── agent.py         # ADK Agent logic
+│       └── agent.py        # ADK Agent logic
 ├── frontend/
-│   └── index.html           # React frontend
-├── tools.yaml               # MCP Toolbox configuration
-├── requirements.txt         # Python dependencies
-├── Dockerfile              # Docker image
-├── cloudbuild.yaml         # Cloud Build configuration
-├── deploy.sh               # Deployment script
-├── .gitignore              # Git ignore rules
-├── env.example             # Environment variables example
-└── README.md               # This file
+│   └── index.html          # React frontend
+├── tools.yaml              # MCP Toolbox configuration
+├── requirements.txt        # Python dependencies
+├── Dockerfile             # Docker image
+├── cloudbuild.yaml        # Cloud Build configuration
+├── deploy.sh              # Deployment script
+├── .gitignore             # Git ignore rules
+├── env.example            # Environment variables example
+└── README.md              # This file
 ```
 
 ## Environment Variables
