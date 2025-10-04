@@ -911,12 +911,12 @@ async def chat(request: ChatRequest):
                             answer = f"❌ Не удалось получить данные за {month_display}"
                     else:
                         # Запрос за все время
-                    response = requests.post(
-                        f'{toolbox_url}/api/tool/get_cost_by_service_all_time/invoke',
-                        json={}
-                    )
-                    response.raise_for_status()
-                    result = response.json()
+                        response = requests.post(
+                            f'{toolbox_url}/api/tool/get_cost_by_service_all_time/invoke',
+                            json={}
+                        )
+                        response.raise_for_status()
+                        result = response.json()
                     data = json.loads(result['result']) if 'result' in result else result
 
                     if not data:
@@ -1616,5 +1616,9 @@ async def get_cost_by_service(invoice_month: str):
 
 if __name__ == "__main__":
     import uvicorn
+    print("Starting FastAPI application...")
+    print(f"App: {app}")
+    print(f"App title: {app.title}")
     port = int(os.getenv("PORT", 8081))
+    print(f"Port: {port}")
     uvicorn.run(app, host="0.0.0.0", port=port)
