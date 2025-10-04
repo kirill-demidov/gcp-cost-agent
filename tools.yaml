@@ -1,0 +1,368 @@
+sources:
+  gcp_billing_bq:
+    kind: bigquery
+    project: ${GCP_PROJECT_ID}
+
+tools:
+  get_monthly_cost_summary:
+    kind: bigquery-sql
+    source: gcp_billing_bq
+    description: "Получает сводку расходов Google Cloud за конкретный месяц. Retrieves a summary of Google Cloud costs for a specific invoice month."
+    parameters:
+      - name: invoice_month
+        type: string
+        description: "Месяц счета в формате YYYYMM (например, 202308). Invoice month in YYYYMM format (e.g., 202308)."
+    statement: |
+      SELECT
+        invoice.month,
+        SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS total_cost,
+        currency
+      FROM
+        `${BILLING_TABLE}`
+      WHERE
+        invoice.month = @invoice_month
+      GROUP BY
+        invoice.month, currency
+      ORDER BY
+        invoice.month
+
+  get_cost_by_project:
+    kind: bigquery-sql
+    source: gcp_billing_bq
+    description: "Получает разбивку расходов по проектам за конкретный месяц. Retrieves a breakdown of Google Cloud costs by project for a specific invoice month."
+    parameters:
+      - name: invoice_month
+        type: string
+        description: "Месяц счета в формате YYYYMM (например, 202308). Invoice month in YYYYMM format (e.g., 202308)."
+    statement: |
+      SELECT
+        project.name,
+        project.id,
+        SUM(cost) as final_cost,
+        currency
+      FROM
+        `${BILLING_TABLE}`
+      WHERE
+        invoice.month = @invoice_month
+      GROUP BY
+        1, 2, currency
+      ORDER BY
+        final_cost DESC
+
+  get_cost_by_service:
+    kind: bigquery-sql
+    source: gcp_billing_bq
+    description: "Получает разбивку расходов по сервисам за конкретный месяц. Retrieves a breakdown of Google Cloud costs by service for a specific invoice month."
+    parameters:
+      - name: invoice_month
+        type: string
+        description: "Месяц счета в формате YYYYMM (например, 202308). Invoice month in YYYYMM format (e.g., 202308)."
+    statement: |
+      SELECT
+        service.description,
+        SUM(cost) as final_cost,
+        currency
+      FROM
+        `${BILLING_TABLE}`
+      WHERE
+        invoice.month = @invoice_month
+      GROUP BY
+        1, currency
+      ORDER BY
+        final_cost DESC
+
+  get_cost_trends:
+    kind: bigquery-sql
+    source: gcp_billing_bq
+    description: "Получает тренд затрат за несколько месяцев для анализа динамики. Retrieves cost trends across multiple months for analysis."
+    parameters:
+      - name: start_month
+        type: string
+        description: "Начальный месяц в формате YYYYMM (например, 202501). Start month in YYYYMM format."
+      - name: end_month
+        type: string
+        description: "Конечный месяц в формате YYYYMM (например, 202510). End month in YYYYMM format."
+    statement: |
+      SELECT
+        invoice.month,
+        SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS total_cost,
+        currency
+      FROM
+        `${BILLING_TABLE}`
+      WHERE
+        invoice.month >= @start_month
+        AND invoice.month <= @end_month
+      GROUP BY
+        invoice.month, currency
+      ORDER BY
+        invoice.month ASC
+
+  get_cost_trends_by_service:
+    kind: bigquery-sql
+    source: gcp_billing_bq
+    description: "Получает тренд затрат для конкретного сервиса за несколько месяцев. Retrieves cost trends for a specific service across multiple months."
+    parameters:
+      - name: start_month
+        type: string
+        description: "Начальный месяц в формате YYYYMM (например, 202501). Start month in YYYYMM format."
+      - name: end_month
+        type: string
+        description: "Конечный месяц в формате YYYYMM (например, 202510). End month in YYYYMM format."
+      - name: service_name
+        type: string
+        description: "Название сервиса (например, 'Cloud Storage', 'BigQuery'). Service name."
+    statement: |
+      SELECT
+        invoice.month,
+        SUM(cost) AS total_cost,
+        ANY_VALUE(currency) as currency
+      FROM
+        `${BILLING_TABLE}`
+      WHERE
+        invoice.month >= @start_month
+        AND invoice.month <= @end_month
+        AND service.description = @service_name
+      GROUP BY
+        invoice.month
+      ORDER BY
+        invoice.month ASC
+
+  get_service_comparison:
+    kind: bigquery-sql
+    source: gcp_billing_bq
+    description: "Сравнивает затраты по сервисам между двумя месяцами. Compares service costs between two months."
+    parameters:
+      - name: month1
+        type: string
+        description: "Первый месяц в формате YYYYMM"
+      - name: month2
+        type: string
+        description: "Второй месяц в формате YYYYMM"
+    statement: |
+      WITH month1_costs AS (
+        SELECT
+          service.description as service_name,
+          SUM(cost) as cost
+        FROM `${BILLING_TABLE}`
+        WHERE invoice.month = @month1
+        GROUP BY service.description
+      ),
+      month2_costs AS (
+        SELECT
+          service.description as service_name,
+          SUM(cost) as cost
+        FROM `${BILLING_TABLE}`
+        WHERE invoice.month = @month2
+        GROUP BY service.description
+      )
+      SELECT
+        COALESCE(m1.service_name, m2.service_name) as service_name,
+        COALESCE(m1.cost, 0) as month1_cost,
+        COALESCE(m2.cost, 0) as month2_cost,
+        COALESCE(m2.cost, 0) - COALESCE(m1.cost, 0) as cost_difference,
+        'ILS' as currency
+      FROM month1_costs m1
+      FULL OUTER JOIN month2_costs m2 ON m1.service_name = m2.service_name
+      ORDER BY ABS(COALESCE(m2.cost, 0) - COALESCE(m1.cost, 0)) DESC
+
+  get_daily_costs:
+    kind: bigquery-sql
+    source: gcp_billing_bq
+    description: "Получает затраты по дням за указанный месяц. Retrieves daily costs for a specific month."
+    parameters:
+      - name: invoice_month
+        type: string
+        description: "Месяц в формате YYYYMM (например, 202509). Month in YYYYMM format (e.g., 202509)."
+    statement: |
+      SELECT
+        FORMAT_DATE('%Y-%m-%d', DATE(usage_start_time)) as date,
+        SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS daily_cost,
+        ANY_VALUE(currency) as currency
+      FROM
+        `${BILLING_TABLE}`
+      WHERE
+        FORMAT_DATE('%Y%m', DATE(usage_start_time)) = @invoice_month
+      GROUP BY
+        date
+      ORDER BY
+        date ASC
+
+  get_daily_costs_by_service:
+    kind: bigquery-sql
+    source: gcp_billing_bq
+    description: "Получает затраты по дням с разбивкой по сервисам за указанный месяц. Retrieves daily costs broken down by service for a specific month."
+    parameters:
+      - name: invoice_month
+        type: string
+        description: "Месяц в формате YYYYMM (например, 202509). Month in YYYYMM format (e.g., 202509)."
+    statement: |
+      SELECT
+        FORMAT_DATE('%Y-%m-%d', DATE(usage_start_time)) as date,
+        service.description,
+        SUM(cost) as daily_cost,
+        ANY_VALUE(currency) as currency
+      FROM
+        `${BILLING_TABLE}`
+      WHERE
+        FORMAT_DATE('%Y%m', DATE(usage_start_time)) = @invoice_month
+      GROUP BY
+        date, service.description
+      ORDER BY
+        date ASC, daily_cost DESC
+
+  get_costs_for_specific_date:
+    kind: bigquery-sql
+    source: gcp_billing_bq
+    description: "Получает разбивку расходов по сервисам за конкретную дату. Retrieves cost breakdown by service for a specific date."
+    parameters:
+      - name: date
+        type: string
+        description: "Дата в формате YYYY-MM-DD (например, 2025-09-13). Date in YYYY-MM-DD format (e.g., 2025-09-13)."
+    statement: |
+      SELECT
+        service.description,
+        SUM(cost) as cost,
+        ANY_VALUE(currency) as currency
+      FROM
+        `${BILLING_TABLE}`
+      WHERE
+        FORMAT_DATE('%Y-%m-%d', DATE(usage_start_time)) = @date
+      GROUP BY
+        service.description
+      ORDER BY
+        cost DESC
+
+  get_costs_for_date_range:
+    kind: bigquery-sql
+    source: gcp_billing_bq
+    description: "Получает затраты по дням с разбивкой по сервисам за диапазон дат. Retrieves daily costs broken down by service for a date range."
+    parameters:
+      - name: start_date
+        type: string
+        description: "Начальная дата в формате YYYY-MM-DD (например, 2025-09-01). Start date in YYYY-MM-DD format."
+      - name: end_date
+        type: string
+        description: "Конечная дата в формате YYYY-MM-DD (например, 2025-09-03). End date in YYYY-MM-DD format."
+    statement: |
+      SELECT
+        FORMAT_DATE('%Y-%m-%d', DATE(usage_start_time)) as date,
+        service.description,
+        SUM(cost) as daily_cost,
+        ANY_VALUE(currency) as currency
+      FROM
+        `${BILLING_TABLE}`
+      WHERE
+        FORMAT_DATE('%Y-%m-%d', DATE(usage_start_time)) >= @start_date
+        AND FORMAT_DATE('%Y-%m-%d', DATE(usage_start_time)) <= @end_date
+      GROUP BY
+        date, service.description
+      ORDER BY
+        date ASC, daily_cost DESC
+
+  get_daily_costs_for_service:
+    kind: bigquery-sql
+    source: gcp_billing_bq
+    description: "Получает затраты по дням для конкретного сервиса за указанный месяц. Retrieves daily costs for a specific service in a given month."
+    parameters:
+      - name: invoice_month
+        type: string
+        description: "Месяц в формате YYYYMM (например, 202509). Month in YYYYMM format (e.g., 202509)."
+      - name: service_name
+        type: string
+        description: "Название сервиса (например, 'Cloud Storage'). Service name (e.g., 'Cloud Storage')."
+    statement: |
+      SELECT
+        FORMAT_DATE('%Y-%m-%d', DATE(usage_start_time)) as date,
+        SUM(cost) as daily_cost,
+        ANY_VALUE(currency) as currency
+      FROM
+        `${BILLING_TABLE}`
+      WHERE
+        FORMAT_DATE('%Y%m', DATE(usage_start_time)) = @invoice_month
+        AND service.description = @service_name
+      GROUP BY
+        date
+      ORDER BY
+        date ASC
+
+  get_daily_costs_for_service_year:
+    kind: bigquery-sql
+    source: gcp_billing_bq
+    description: "Получает затраты по дням для конкретного сервиса за весь год или за все время. Retrieves daily costs for a specific service for a whole year or all time."
+    parameters:
+      - name: year
+        type: string
+        description: "Год в формате YYYY (например, 2025) или пустая строка для всех данных. Year in YYYY format (e.g., 2025) or empty string for all data."
+      - name: service_name
+        type: string
+        description: "Название сервиса (например, 'Cloud Storage'). Service name (e.g., 'Cloud Storage')."
+    statement: |
+      SELECT
+        FORMAT_DATE('%Y-%m-%d', DATE(usage_start_time)) as date,
+        SUM(cost) as daily_cost,
+        ANY_VALUE(currency) as currency
+      FROM
+        `${BILLING_TABLE}`
+      WHERE
+        service.description = @service_name
+        AND (
+          @year = ''
+          OR FORMAT_DATE('%Y', DATE(usage_start_time)) = @year
+        )
+      GROUP BY
+        date
+      HAVING
+        daily_cost > 0
+      ORDER BY
+        daily_cost DESC
+      LIMIT 100
+
+  get_cost_by_service_all_time:
+    kind: bigquery-sql
+    source: gcp_billing_bq
+    description: "Получает разбивку расходов по сервисам за весь доступный период. Retrieves cost breakdown by service for all available data."
+    statement: |
+      SELECT
+        service.description,
+        SUM(cost) as final_cost,
+        ANY_VALUE(currency) as currency
+      FROM
+        `${BILLING_TABLE}`
+      GROUP BY
+        service.description
+      ORDER BY
+        final_cost DESC
+
+  get_cost_by_project_all_time:
+    kind: bigquery-sql
+    source: gcp_billing_bq
+    description: "Получает разбивку расходов по проектам за весь доступный период. Retrieves cost breakdown by project for all available data."
+    statement: |
+      SELECT
+        project.name,
+        project.id,
+        SUM(cost) as final_cost,
+        ANY_VALUE(currency) as currency
+      FROM
+        `${BILLING_TABLE}`
+      GROUP BY
+        project.name, project.id
+      ORDER BY
+        final_cost DESC
+
+toolsets:
+  gcp-cost-agent-tools:
+    - get_monthly_cost_summary
+    - get_cost_by_project
+    - get_cost_by_service
+    - get_cost_trends
+    - get_cost_trends_by_service
+    - get_service_comparison
+    - get_daily_costs
+    - get_daily_costs_by_service
+    - get_costs_for_specific_date
+    - get_costs_for_date_range
+    - get_daily_costs_for_service
+    - get_daily_costs_for_service_year
+    - get_cost_by_service_all_time
+    - get_cost_by_project_all_time

@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GCP Cost Agent - Анализ расходов</title>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- Babel Standalone -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+                sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // API URL
+        const API_URL = 'http://localhost:8080';
+
+        // Форматирование YYYYMM в "Месяц Год"
+        function formatMonth(yyyymm) {
+            const monthNames = {
+                '01': 'Январь', '02': 'Февраль', '03': 'Март', '04': 'Апрель',
+                '05': 'Май', '06': 'Июнь', '07': 'Июль', '08': 'Август',
+                '09': 'Сентябрь', '10': 'Октябрь', '11': 'Ноябрь', '12': 'Декабрь'
+            };
+            if (!yyyymm || yyyymm.length !== 6) return yyyymm;
+            const year = yyyymm.substring(0, 4);
+            const month = yyyymm.substring(4, 6);
+            return `${monthNames[month]} ${year}`;
+        }
+
+        function App() {
+            const [activeTab, setActiveTab] = useState('chat');
+            const [chatMessage, setChatMessage] = useState('');
+            const [chatHistory, setChatHistory] = useState([]);
+            const [loading, setLoading] = useState(false);
+
+            return (
+                <div className="min-h-screen">
+                    {/* Header */}
+                    <header className="bg-white shadow">
+                        <div className="container mx-auto px-4 py-4">
+                            <h1 className="text-3xl font-bold text-gray-800">
+                                GCP Cost Agent
+                            </h1>
+                            <p className="text-gray-600 mt-1">
+                                Анализ расходов Google Cloud Platform
+                            </p>
+                        </div>
+                    </header>
+
+                    {/* Navigation */}
+                    <nav className="bg-white border-b">
+                        <div className="container mx-auto px-4">
+                            <div className="flex space-x-4">
+                                <button
+                                    onClick={() => setActiveTab('chat')}
+                                    className={`px-4 py-3 font-medium ${
+                                        activeTab === 'chat'
+                                            ? 'text-blue-600 border-b-2 border-blue-600'
+                                            : 'text-gray-600 hover:text-blue-600'
+                                    }`}
+                                >
+                                    Чат с агентом
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('trends')}
+                                    className={`px-4 py-3 font-medium ${
+                                        activeTab === 'trends'
+                                            ? 'text-blue-600 border-b-2 border-blue-600'
+                                            : 'text-gray-600 hover:text-blue-600'
+                                    }`}
+                                >
+                                    Тренды затрат
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('comparison')}
+                                    className={`px-4 py-3 font-medium ${
+                                        activeTab === 'comparison'
+                                            ? 'text-blue-600 border-b-2 border-blue-600'
+                                            : 'text-gray-600 hover:text-blue-600'
+                                    }`}
+                                >
+                                    Сравнение
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('services')}
+                                    className={`px-4 py-3 font-medium ${
+                                        activeTab === 'services'
+                                            ? 'text-blue-600 border-b-2 border-blue-600'
+                                            : 'text-gray-600 hover:text-blue-600'
+                                    }`}
+                                >
+                                    По сервисам
+                                </button>
+                            </div>
+                        </div>
+                    </nav>
+
+                    {/* Content */}
+                    <main className="container mx-auto px-4 py-8">
+                        {activeTab === 'chat' && <ChatTab />}
+                        {activeTab === 'trends' && <TrendsTab />}
+                        {activeTab === 'comparison' && <ComparisonTab />}
+                        {activeTab === 'services' && <ServicesTab />}
+                    </main>
+                </div>
+            );
+        }
+
+        function ChatTab() {
+            const [message, setMessage] = useState('');
+            const [history, setHistory] = useState([]);
+            const [loading, setLoading] = useState(false);
+            const [sessionId] = useState(() => 'chat_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+
+            const sendMessage = async () => {
+                if (!message.trim()) return;
+
+                const userMessage = { type: 'user', text: message };
+                setHistory(prev => [...prev, userMessage]);
+                setLoading(true);
+                setMessage('');
+
+                try {
+                    const response = await fetch(`${API_URL}/chat`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ question: message, session_id: sessionId })
+                    });
+
+                    const data = await response.json();
+                    const agentMessage = { type: 'agent', text: data.answer };
+                    setHistory(prev => [...prev, agentMessage]);
+                } catch (error) {
+                    const errorMessage = { type: 'error', text: 'Ошибка связи с сервером' };
+                    setHistory(prev => [...prev, errorMessage]);
+                }
+
+                setLoading(false);
+            };
+
+            return (
+                <div className="max-w-4xl mx-auto">
+                    <div className="bg-white rounded-lg shadow p-6">
+                        <h2 className="text-2xl font-bold mb-4">Чат с агентом</h2>
+
+                        {/* Chat history */}
+                        <div className="space-y-4 mb-4 h-96 overflow-y-auto">
+                            {history.length === 0 && (
+                                <div className="text-gray-500 text-center py-8">
+                                    <p>Задайте вопрос о расходах GCP</p>
+                                    <p className="text-sm mt-2">Например: "Какие были общие затраты в сентябре 2025?"</p>
+                                </div>
+                            )}
+                            {history.map((msg, idx) => (
+                                <div
+                                    key={idx}
+                                    className={`p-4 rounded-lg ${
+                                        msg.type === 'user'
+                                            ? 'bg-blue-100 ml-12'
+                                            : msg.type === 'error'
+                                            ? 'bg-red-100'
+                                            : 'bg-gray-100 mr-12'
+                                    }`}
+                                >
+                                    <div className="font-semibold mb-1">
+                                        {msg.type === 'user' ? 'Вы' : msg.type === 'error' ? 'Ошибка' : 'Агент'}
+                                    </div>
+                                    <div className="whitespace-pre-wrap">{msg.text}</div>
+                                </div>
+                            ))}
+                            {loading && (
+                                <div className="text-gray-500 text-center">
+                                    <div className="animate-pulse">Агент думает...</div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Input */}
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                value={message}
+                                onChange={(e) => setMessage(e.target.value)}
+                                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                                placeholder="Введите ваш вопрос..."
+                                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                disabled={loading}
+                            />
+                            <button
+                                onClick={sendMessage}
+                                disabled={loading || !message.trim()}
+                                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                Отправить
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function TrendsTab() {
+            const [startMonth, setStartMonth] = useState('202501');
+            const [endMonth, setEndMonth] = useState('202509');
+            const [loading, setLoading] = useState(false);
+            const chartRef = useRef(null);
+            const chartInstance = useRef(null);
+
+            const loadData = async () => {
+                setLoading(true);
+                try {
+                    const response = await fetch(
+                        `${API_URL}/data/trends?start_month=${startMonth}&end_month=${endMonth}`,
+                        { method: 'POST' }
+                    );
+                    const data = await response.json();
+
+                    if (chartInstance.current) {
+                        chartInstance.current.destroy();
+                    }
+
+                    const ctx = chartRef.current.getContext('2d');
+
+                    // Форматируем labels для графика
+                    const formattedData = {
+                        ...data.chart_data,
+                        labels: data.chart_data.labels.map(label => formatMonth(label))
+                    };
+
+                    chartInstance.current = new Chart(ctx, {
+                        type: 'line',
+                        data: formattedData,
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: 'Динамика расходов GCP'
+                                },
+                                legend: {
+                                    display: true,
+                                    position: 'top'
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Затраты (ILS)'
+                                    }
+                                }
+                            }
+                        }
+                    });
+                } catch (error) {
+                    alert('Ошибка загрузки данных: ' + error.message);
+                }
+                setLoading(false);
+            };
+
+            useEffect(() => {
+                loadData();
+            }, []);
+
+            return (
+                <div className="max-w-6xl mx-auto">
+                    <div className="bg-white rounded-lg shadow p-6">
+                        <h2 className="text-2xl font-bold mb-4">Тренды затрат</h2>
+
+                        <div className="flex gap-4 mb-6">
+                            <div className="flex-1">
+                                <label className="block text-sm font-medium mb-2">Начальный месяц</label>
+                                <input
+                                    type="text"
+                                    value={startMonth}
+                                    onChange={(e) => setStartMonth(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                    placeholder="202501"
+                                />
+                                <div className="text-sm text-gray-500 mt-1">{formatMonth(startMonth)}</div>
+                            </div>
+                            <div className="flex-1">
+                                <label className="block text-sm font-medium mb-2">Конечный месяц</label>
+                                <input
+                                    type="text"
+                                    value={endMonth}
+                                    onChange={(e) => setEndMonth(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                    placeholder="202509"
+                                />
+                                <div className="text-sm text-gray-500 mt-1">{formatMonth(endMonth)}</div>
+                            </div>
+                            <div className="flex items-end">
+                                <button
+                                    onClick={loadData}
+                                    disabled={loading}
+                                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                    {loading ? 'Загрузка...' : 'Обновить'}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="relative h-96">
+                            <canvas ref={chartRef}></canvas>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function ComparisonTab() {
+            const [month1, setMonth1] = useState('202508');
+            const [month2, setMonth2] = useState('202509');
+            const [loading, setLoading] = useState(false);
+            const chartRef = useRef(null);
+            const chartInstance = useRef(null);
+
+            const loadData = async () => {
+                setLoading(true);
+                try {
+                    const response = await fetch(
+                        `${API_URL}/data/service-comparison?month1=${month1}&month2=${month2}`,
+                        { method: 'POST' }
+                    );
+                    const data = await response.json();
+
+                    if (chartInstance.current) {
+                        chartInstance.current.destroy();
+                    }
+
+                    const ctx = chartRef.current.getContext('2d');
+                    chartInstance.current = new Chart(ctx, {
+                        type: 'bar',
+                        data: data.chart_data,
+                        options: {
+                            responsive: true,
+                            indexAxis: 'y',
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: 'Сравнение затрат по сервисам'
+                                },
+                                legend: {
+                                    display: true,
+                                    position: 'top'
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Затраты (ILS)'
+                                    }
+                                }
+                            }
+                        }
+                    });
+                } catch (error) {
+                    alert('Ошибка загрузки данных: ' + error.message);
+                }
+                setLoading(false);
+            };
+
+            useEffect(() => {
+                loadData();
+            }, []);
+
+            return (
+                <div className="max-w-6xl mx-auto">
+                    <div className="bg-white rounded-lg shadow p-6">
+                        <h2 className="text-2xl font-bold mb-4">Сравнение месяцев</h2>
+
+                        <div className="flex gap-4 mb-6">
+                            <div className="flex-1">
+                                <label className="block text-sm font-medium mb-2">Месяц 1</label>
+                                <input
+                                    type="text"
+                                    value={month1}
+                                    onChange={(e) => setMonth1(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                    placeholder="202508"
+                                />
+                                <div className="text-sm text-gray-500 mt-1">{formatMonth(month1)}</div>
+                            </div>
+                            <div className="flex-1">
+                                <label className="block text-sm font-medium mb-2">Месяц 2</label>
+                                <input
+                                    type="text"
+                                    value={month2}
+                                    onChange={(e) => setMonth2(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                    placeholder="202509"
+                                />
+                                <div className="text-sm text-gray-500 mt-1">{formatMonth(month2)}</div>
+                            </div>
+                            <div className="flex items-end">
+                                <button
+                                    onClick={loadData}
+                                    disabled={loading}
+                                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                    {loading ? 'Загрузка...' : 'Сравнить'}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="relative h-96">
+                            <canvas ref={chartRef}></canvas>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function ServicesTab() {
+            const [month, setMonth] = useState('202509');
+            const [loading, setLoading] = useState(false);
+            const chartRef = useRef(null);
+            const chartInstance = useRef(null);
+
+            const loadData = async () => {
+                setLoading(true);
+                try {
+                    const response = await fetch(
+                        `${API_URL}/data/cost-by-service?invoice_month=${month}`,
+                        { method: 'POST' }
+                    );
+                    const data = await response.json();
+
+                    if (chartInstance.current) {
+                        chartInstance.current.destroy();
+                    }
+
+                    const ctx = chartRef.current.getContext('2d');
+                    chartInstance.current = new Chart(ctx, {
+                        type: 'pie',
+                        data: data.chart_data,
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: `Распределение затрат по сервисам (${formatMonth(month)})`
+                                },
+                                legend: {
+                                    display: true,
+                                    position: 'right'
+                                }
+                            }
+                        }
+                    });
+                } catch (error) {
+                    alert('Ошибка загрузки данных: ' + error.message);
+                }
+                setLoading(false);
+            };
+
+            useEffect(() => {
+                loadData();
+            }, []);
+
+            return (
+                <div className="max-w-6xl mx-auto">
+                    <div className="bg-white rounded-lg shadow p-6">
+                        <h2 className="text-2xl font-bold mb-4">Затраты по сервисам</h2>
+
+                        <div className="flex gap-4 mb-6">
+                            <div className="flex-1">
+                                <label className="block text-sm font-medium mb-2">Месяц</label>
+                                <input
+                                    type="text"
+                                    value={month}
+                                    onChange={(e) => setMonth(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                    placeholder="202509"
+                                />
+                                <div className="text-sm text-gray-500 mt-1">{formatMonth(month)}</div>
+                            </div>
+                            <div className="flex items-end">
+                                <button
+                                    onClick={loadData}
+                                    disabled={loading}
+                                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                    {loading ? 'Загрузка...' : 'Загрузить'}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="relative h-96">
+                            <canvas ref={chartRef}></canvas>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Render
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

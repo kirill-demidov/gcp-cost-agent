@@ -1,0 +1,15 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--build-arg'
+      - 'GOOGLE_API_KEY=${_GOOGLE_API_KEY}'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/gcp-cost-agent'
+      - '.'
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/gcp-cost-agent'
+images:
+  - 'gcr.io/$PROJECT_ID/gcp-cost-agent'
