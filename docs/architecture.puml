@@ -1,13 +1,13 @@
 @startuml
 !theme plain
-title GCP Cost Agent - System Architecture
+title GCP Cost Agent System Architecture
 
 actor User
-participant "Frontend (React)" as Frontend
-participant "FastAPI Backend" as Backend
-participant "MCP Toolbox (ADK)" as Toolbox
-participant "BigQuery (Billing Data)" as BigQuery
-participant "Google Cloud (Cloud Run)" as CloudRun
+participant Frontend as Frontend
+participant Backend as Backend
+participant Toolbox as Toolbox
+participant BigQuery as BigQuery
+participant CloudRun as CloudRun
 
 == Local Development Flow ==
 
