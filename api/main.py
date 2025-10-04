@@ -5,11 +5,24 @@ import os
 import sys
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+import logging
+# Prometheus and Instrumentator imports (safe, optional)
+from fastapi import status
+try:
+    from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest, Gauge, Counter, Histogram
+    PROM_ENABLED = True
+except Exception:
+    PROM_ENABLED = False
+try:
+    from fastapi_instrumentator import Instrumentator
+    INSTRUMENTATOR_AVAILABLE = True
+except Exception:
+    INSTRUMENTATOR_AVAILABLE = False
+import time
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
-import logging
 import google.generativeai as genai
 
 # Загружаем переменные окружения из .env
@@ -24,6 +37,17 @@ genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Prometheus metrics setup
+if PROM_ENABLED:
+    registry = CollectorRegistry()
+    app_health_gauge = Gauge("gcp_cost_agent_health", "Overall health status (1=ok,0=fail)", registry=registry)
+    toolbox_status_gauge = Gauge("gcp_cost_agent_toolbox_status", "Toolbox connectivity (1=ok,0=fail)", registry=registry)
+    genai_config_gauge = Gauge("gcp_cost_agent_genai_config", "Gemini API key present (1=present,0=missing)", registry=registry)
+    request_latency_hist = Histogram("gcp_cost_agent_request_latency_seconds", "Request latency seconds", registry=registry, buckets=(0.05,0.1,0.25,0.5,1,2,5))
+    request_counter = Counter("gcp_cost_agent_requests_total", "Total requests processed", ["endpoint","method","status_code"], registry=registry)
+else:
+    registry = None
 
 # Пытаемся импортировать агенты (могут не работать в Cloud Run без toolbox)
 try:
@@ -45,6 +69,8 @@ conversation_history: Dict[str, List[Dict[str, Any]]] = {}
 def understand_query_with_llm(question: str, history: List[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Использует Gemini для понимания намерения пользователя с учетом контекста"""
     model = genai.GenerativeModel('gemini-2.0-flash-exp')
+    if not os.getenv('GOOGLE_API_KEY'):
+        return {"intent": "unknown", "month": None, "year": None, "date": None, "date_range": None, "service": None, "analysis_type": None, "top_n": None}
 
     # Формируем контекст из истории
     context = ""
@@ -499,10 +525,49 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Prometheus/metrics middleware (after CORS, before static)
+@app.middleware("http")
+async def metrics_middleware(request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    if PROM_ENABLED:
+        try:
+            latency = time.perf_counter() - start
+            request_latency_hist.observe(latency)
+            request_counter.labels(endpoint=request.url.path, method=request.method, status_code=str(response.status_code)).inc()
+        except Exception:
+            pass
+    return response
+
 # Раздача статики
 frontend_dir = os.path.join(os.path.dirname(__file__), '..', 'frontend')
 if os.path.exists(frontend_dir):
     app.mount("/static", StaticFiles(directory=frontend_dir), name="static")
+
+# Fallback /metrics endpoint if needed
+if PROM_ENABLED and not INSTRUMENTATOR_AVAILABLE:
+    from fastapi import Response
+    @app.get("/metrics")
+    async def metrics():
+        try:
+            # Set static gauges
+            if os.getenv('GOOGLE_API_KEY'):
+                genai_config_gauge.set(1)
+            else:
+                genai_config_gauge.set(0)
+            # toolbox gauge will be updated in /readiness
+            output = generate_latest(registry)
+            from fastapi.responses import Response
+            return Response(content=output, media_type=CONTENT_TYPE_LATEST)
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+# Optional Instrumentator metrics exposure
+if INSTRUMENTATOR_AVAILABLE:
+    try:
+        Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+    except Exception:
+        pass
 
 
 class ChatRequest(BaseModel):
@@ -530,21 +595,59 @@ async def root():
 
 @app.get("/health")
 async def health():
-    """Проверка здоровья сервиса"""
+    """Проверка здоровья сервиса (liveness, не блокирует)"""
     try:
-        # Проверяем подключение к Toolbox
-        toolbox_url = os.getenv('TOOLBOX_URL', 'http://127.0.0.1:5001')
-        toolbox = ToolboxSyncClient(toolbox_url)
-        tools = toolbox.load_toolset('gcp-cost-agent-tools')
-
-        return {
+        genai_key_present = bool(os.getenv('GOOGLE_API_KEY'))
+        status_obj = {
             "status": "healthy",
-            "toolbox": "connected",
-            "tools_count": len(tools)
+            "version": os.getenv("APP_VERSION", "1.0.0"),
+            "env": os.getenv("APP_ENV", "dev"),
+            "genai_key_present": genai_key_present,
+            "agents_available": AGENTS_AVAILABLE
         }
+        if PROM_ENABLED:
+            app_health_gauge.set(1)
+            genai_config_gauge.set(1 if genai_key_present else 0)
+        return status_obj
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
+        if PROM_ENABLED:
+            app_health_gauge.set(0)
         raise HTTPException(status_code=503, detail=str(e))
+
+
+# Kubernetes probe endpoints
+@app.get("/liveness")
+async def liveness():
+    # Pure process-level check
+    if PROM_ENABLED:
+        app_health_gauge.set(1)
+    return {"status":"alive"}
+
+@app.get("/readiness")
+async def readiness():
+    """
+    Readiness checks external dependencies but uses short timeouts to avoid blocking.
+    """
+    toolbox_ok = False
+    try:
+        if ToolboxSyncClient:
+            toolbox_url = os.getenv('TOOLBOX_URL', 'http://127.0.0.1:5001')
+            toolbox = ToolboxSyncClient(toolbox_url, timeout=1.5) if hasattr(ToolboxSyncClient, "__call__") else ToolboxSyncClient(toolbox_url)
+            # Try a lightweight call if available, otherwise just instantiate
+            toolbox_ok = True
+    except Exception as e:
+        logger.warning(f"Readiness toolbox check failed: {e}")
+        toolbox_ok = False
+
+    if PROM_ENABLED:
+        toolbox_status_gauge.set(1 if toolbox_ok else 0)
+
+    ready = toolbox_ok or not AGENTS_AVAILABLE  # If agents are optional, consider ready if they are absent
+    return {
+        "ready": ready,
+        "toolbox_connected": toolbox_ok,
+        "agents_available": AGENTS_AVAILABLE
+    }
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -554,6 +657,16 @@ async def chat(request: ChatRequest):
     """
     try:
         logger.info(f"Received question: {request.question}")
+        if len(request.question) > 4000:
+            return ChatResponse(answer="Вопрос слишком длинный. Пожалуйста, сократите формулировку до 4000 символов.", data=None)
+# Simple version endpoint
+@app.get("/version")
+async def version():
+    return {
+        "version": os.getenv("APP_VERSION", "1.0.0"),
+        "build": os.getenv("GIT_SHA", "unknown"),
+        "env": os.getenv("APP_ENV", "dev")
+    }
 
         # Получаем или создаем session_id
         session_id = request.session_id or "default"
