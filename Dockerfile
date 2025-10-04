@@ -32,5 +32,5 @@ ENV GOOGLE_API_KEY=${GOOGLE_API_KEY}
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:$PORT/health || exit 1
 
-# Start FastAPI (using cloud version with frontend)
-CMD uvicorn api.cloud_api:app --host 0.0.0.0 --port $PORT
+# Start FastAPI
+CMD uvicorn api.main:app --host 0.0.0.0 --port $PORT

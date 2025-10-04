@@ -882,9 +882,35 @@ async def chat(request: ChatRequest):
                             answer += f"• {row['date']}: {row['daily_cost']:.2f} {row['currency']}\n"
 
             elif parsed['intent'] == 'costs':
-                # Если месяц не указан - используем all time
+                # Если месяц не указан - проверяем контекст
                 if not parsed['month']:
-                    # Запрос за все время
+                    # Проверяем, не спрашивает ли пользователь о текущем месяце
+                    question_lower = request.question.lower()
+                    current_month_indicators = ['в этом месяце', 'в текущем месяце', 'за этот месяц', 'за текущий месяц', 'this month', 'current month']
+                    
+                    if any(indicator in question_lower for indicator in current_month_indicators):
+                        # Запрос за текущий месяц
+                        from datetime import datetime
+                        current_month = datetime.now().replace(day=1)
+                        month_str = current_month.strftime("%Y%m")
+                        month_display = format_month_human(month_str)
+                        
+                        response = requests.post(
+                            f'{toolbox_url}/api/tool/get_monthly_cost_summary/invoke',
+                            json={"month": month_str}
+                        )
+                        response.raise_for_status()
+                        result = response.json()
+                        data = json.loads(result['result']) if 'result' in result else result
+                        
+                        if data:
+                            total_cost = data['total_cost']
+                            currency = data['currency']
+                            answer = f"💰 **Общие затраты за {month_display}:** {total_cost:.2f} {currency}"
+                        else:
+                            answer = f"❌ Не удалось получить данные за {month_display}"
+                    else:
+                        # Запрос за все время
                     response = requests.post(
                         f'{toolbox_url}/api/tool/get_cost_by_service_all_time/invoke',
                         json={}

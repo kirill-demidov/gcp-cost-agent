@@ -271,8 +271,7 @@ gcp-cost-agent/
 │   ├── detailed-flow.puml  # Detailed request flow
 │   └── deployment.puml     # Deployment process
 ├── api/
-│   ├── main.py             # FastAPI backend (local)
-│   └── cloud_api.py        # FastAPI backend (Cloud Run)
+│   └── main.py             # FastAPI backend
 ├── agents/
 │   └── gcp_cost_agent/
 │       └── agent.py        # ADK Agent logic
